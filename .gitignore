@@ -3,3 +3,5 @@
 .pixi
 *.egg-info
 .ipynb_checkpoints/
+micasa-data
+micasa_virtualized
