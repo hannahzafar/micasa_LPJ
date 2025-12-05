@@ -19,6 +19,9 @@ netcdf4 = ">=1.7.3,<2"
 h5netcdf = ">=1.7.3,<2"
 matplotlib = ">=3.10.8,<4"
 cartopy = ">=0.25.0,<0.26"
+dask = ">=2025.11.0,<2026"
+hvplot = ">=0.12.1,<0.13"
+jupyter_bokeh = ">=4.0.5,<5"
 
 [pypi-dependencies]
 virtualizarr-nc4-toolkit = { git = "git+https://github.com/hannahzafar/virtualizarr-nc4-toolkit.git" }
