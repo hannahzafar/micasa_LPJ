@@ -98,16 +98,28 @@ result = (
 
 # Pick years slice 2022-2024
 result_sel = result.sel(time=slice("2022", "2024"))
-seasonal_means = result_sel.groupby(result_sel.time.dt.season).mean("time").compute()
 
-output_dir = "plots"
+# Compute (doesn't improve performance to calculate mean or var first)
+results_compute = result_sel.compute()
+
+mask = results_compute.notnull().any(dim=["time"])
+results_masked = results_compute.where(mask, drop=True)
+results_masked = results_masked.astype("float64")
+
+seasonal_means = results_masked.groupby(result_sel.time.dt.season).mean("time")
+seasonal_var = results_masked.groupby(result_sel.time.dt.season).var(
+    dim="time", skipna=True
+)
+
+# Plots
+output_dir = "plots/"
 os.makedirs(output_dir, exist_ok=True)
 
-# Plot and save
 proj = ccrs.PlateCarree()
 
+## Means
 for season in seasonal_means.season.values:
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8), subplot_kw={"projection": proj})
+    fig, ax = plt.subplots(1, 1, figsize=(16, 8), subplot_kw={"projection": proj})
 
     # print(i, season)
     plot = seasonal_means.sel(season=season).plot.pcolormesh(
@@ -118,15 +130,39 @@ for season in seasonal_means.season.values:
         cmap="RdBu",
         add_colorbar=False,
     )
-    ax.set_title(f"{season} (2022-2024)")
+    ax.set_title(f"{season}")
     cb = plt.colorbar(
         plot,
         orientation="horizontal",
         shrink=0.8,
         pad=0.05,
-        label="Difference in NPP (kg m-2 s-1)",
+        label="LPJ-EOSIM — MiCASA (kg C m-2 s-1)\n2022-2024 Average",
     )
-    fig.suptitle("LPJ-EOSIM - MiCASA", x=0.5, y=0.9, fontsize=15)
-    output_filename = f"NPPDiff_{season}.png"
+    fig.suptitle("Mean model difference, NPP", x=0.5, y=0.92, fontsize=15)
+    output_filename = f"NPPDiff_means_{season}.png"
+    output_path = os.path.join(output_dir, output_filename)
+    fig.savefig(output_path)
+
+
+## Variance
+for season in seasonal_var.season.values:
+    fig, ax = plt.subplots(1, 1, figsize=(16, 8), subplot_kw={"projection": proj})
+
+    plot = seasonal_var.sel(season=season).plot.pcolormesh(
+        ax=ax,
+        transform=ccrs.PlateCarree(),
+        cmap="Reds",
+        add_colorbar=False,
+    )
+    ax.set_title(f"{season}")
+    cb = plt.colorbar(
+        plot,
+        orientation="horizontal",
+        shrink=0.8,
+        pad=0.05,
+        label="LPJ-EOSIM — MiCASA (kg C m-2 s-1)\n2022-2024 Average",
+    )
+    fig.suptitle("Variance of model difference, NPP", x=0.5, y=0.92, fontsize=15)
+    output_filename = f"NPPDiff_var_{season}.png"
     output_path = os.path.join(output_dir, output_filename)
     fig.savefig(output_path)
