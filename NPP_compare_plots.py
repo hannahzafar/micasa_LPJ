@@ -2,7 +2,6 @@
 
 import os
 
-# import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
 import xarray as xr
 from cartopy import crs as ccrs
@@ -90,26 +89,33 @@ ds_lpj_align, ds_mi_align = test_align_exact(ds_lpj_sel, ds_mi_sel)
 
 ds_lpj_align = ds_lpj_align.chunk(chunk_config)
 
-# print(ds_lpj_align["dnpp"].attrs, ds_mi_align["NPP"].attrs, sep="\n\n")
-result = (
-    ds_lpj_align["dnpp"] / 86400 - ds_mi_align["NPP"]
-)  # Conversion? did i do that right
+# Subset and convert units to align
+ds_lpj_sub = (ds_lpj_align["dnpp"].sel(time="2024")) / 86400
+ds_mi_sub = ds_mi_align["NPP"].sel(time="2024")
 
+# Calculate Means
+ds_lpj_means = ds_lpj_sub.groupby(ds_lpj_sub.time.dt.season).mean(dim="time")
+ds_mi_means = ds_mi_sub.groupby(ds_mi_sub.time.dt.season).mean(dim="time")
 
-# Pick years slice 2022-2024
-result_sel = result.sel(time=slice("2022", "2024"))
+means = ds_lpj_means - ds_mi_means
+means = means.astype("float64")
 
-# Compute (doesn't improve performance to calculate mean or var first)
-results_compute = result_sel.compute()
+## Compute (so that we can chop unneeded lat/lons on the ocean)
+means = means.compute()
+mask = means.notnull().any(dim=["season"])
+means = means.where(mask, drop=True)
 
-mask = results_compute.notnull().any(dim=["time"])
-results_masked = results_compute.where(mask, drop=True)
-results_masked = results_masked.astype("float64")
+# Calculate Variance
+ds_lpj_var = ds_lpj_sub.groupby(ds_lpj_sub.time.dt.season).var(dim="time")
+ds_mi_var = ds_mi_sub.groupby(ds_mi_sub.time.dt.season).var(dim="time")
 
-seasonal_means = results_masked.groupby(result_sel.time.dt.season).mean("time")
-seasonal_var = results_masked.groupby(result_sel.time.dt.season).var(
-    dim="time", skipna=True
-)
+variance = ds_lpj_var - ds_mi_var
+variance = variance.astype("float64")
+
+## Compute (so that we can chop unneeded lat/lons on the ocean)
+variance = variance.compute()
+mask = variance.notnull().any(dim=["season"])
+variance = variance.where(mask, drop=True)
 
 # Plots
 output_dir = "plots/"
@@ -118,11 +124,11 @@ os.makedirs(output_dir, exist_ok=True)
 proj = ccrs.PlateCarree()
 
 ## Means
-for season in seasonal_means.season.values:
+for season in means.season.values:
     fig, ax = plt.subplots(1, 1, figsize=(16, 8), subplot_kw={"projection": proj})
 
     # print(i, season)
-    plot = seasonal_means.sel(season=season).plot.pcolormesh(
+    plot = means.sel(season=season).plot.pcolormesh(
         ax=ax,
         transform=ccrs.PlateCarree(),
         vmin=-9e-8,
@@ -136,22 +142,22 @@ for season in seasonal_means.season.values:
         orientation="horizontal",
         shrink=0.8,
         pad=0.05,
-        label="LPJ-EOSIM — MiCASA (kg C m-2 s-1)\n2022-2024 Average",
+        label="LPJ-EOSIM — MiCASA (kg C m$^{-2}$ s$^{-1}$)\n2022-2024 Average",
     )
-    fig.suptitle("Mean model difference, NPP", x=0.5, y=0.92, fontsize=15)
+    fig.suptitle("Difference of Mean NPP", x=0.5, y=0.92, fontsize=15)
     output_filename = f"NPPDiff_means_{season}.png"
     output_path = os.path.join(output_dir, output_filename)
     fig.savefig(output_path)
 
 
-## Variance
-for season in seasonal_var.season.values:
+# Variance
+for season in variance.season.values:
     fig, ax = plt.subplots(1, 1, figsize=(16, 8), subplot_kw={"projection": proj})
 
-    plot = seasonal_var.sel(season=season).plot.pcolormesh(
+    plot = variance.sel(season=season).plot.pcolormesh(
         ax=ax,
         transform=ccrs.PlateCarree(),
-        cmap="Reds",
+        cmap="RdBu",
         add_colorbar=False,
     )
     ax.set_title(f"{season}")
@@ -160,9 +166,9 @@ for season in seasonal_var.season.values:
         orientation="horizontal",
         shrink=0.8,
         pad=0.05,
-        label="LPJ-EOSIM — MiCASA (kg C m-2 s-1)\n2022-2024 Average",
+        label="LPJ-EOSIM — MiCASA (kg C m$^{-2}$ s$^{-1}$)\n2022-2024 Average",
     )
-    fig.suptitle("Variance of model difference, NPP", x=0.5, y=0.92, fontsize=15)
+    fig.suptitle("Difference of mean variance in NPP", x=0.5, y=0.92, fontsize=15)
     output_filename = f"NPPDiff_var_{season}.png"
     output_path = os.path.join(output_dir, output_filename)
     fig.savefig(output_path)
